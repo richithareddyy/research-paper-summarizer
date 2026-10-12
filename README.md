@@ -1,10 +1,17 @@
 # Research Paper Summarizer
 
-### Read, compare and explore academic papers
-
 Turn a PDF, pasted text or DOI/arXiv link into structured summaries, methodology insights, a chat you can question, study aids and exportable research notes. Built with **Python · Streamlit · Gemini · PyMuPDF**.
 
 [Get started](#setup) · [Features](#features) · [Configuration](#configuration) · [Limitations](#limitations)
+
+## How the reading workflow is implemented
+
+The goal is to keep reading, asking questions, and taking notes in one place. [`app.py`](app.py) contains the Streamlit interface and processing functions:
+
+- PyMuPDF extracts selectable text, embedded images, and tables. DOI lookup tries Crossref and Semantic Scholar; arXiv lookup can fetch a PDF.
+- Summaries and chat send paper text directly to Gemini. Text is normalized and capped by `MAX_INPUT_CHARS`; there is no embedding index or retrieval layer, and text beyond that cap is omitted.
+- Comparisons first generate an executive summary for each paper, using up to four workers, then compare those summaries. That keeps the comparison prompt smaller but can lose details from the originals.
+- Extracted material and generated results stay in Streamlit session state. The export functions assemble those results into Markdown, PDF, or JSON.
 
 ## At a glance
 
@@ -106,3 +113,9 @@ colors, defined once in `COLORS`.
   quota or overloaded, the app automatically retries with `gemini-flash-latest` and then
   `gemini-flash-lite-latest`. Preview and experimental models are hidden from the model list
   because they often have no free quota.
+
+## Checking a change
+
+There is no committed automated test suite. A useful manual check is to load a selectable-text PDF, inspect the extracted text and metadata, generate a summary, ask a question whose answer is in the paper, compare the two built-in samples, and open each export format. Model calls require a key; there is no recorded accuracy evaluation.
+
+Generated summaries, citations, and study aids need checking against the paper. Model context is truncated by characters rather than selected for relevance, and multi-paper conclusions are based on intermediate summaries. Paper text is sent to the configured Gemini service when analysis is requested.
