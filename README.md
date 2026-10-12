@@ -93,7 +93,7 @@ For Streamlit Community Cloud, put `GOOGLE_API_KEY` in the app's secrets instead
 The app's look (colors, fonts, corner radius, status and chart colors) is set in
 `.streamlit/config.toml`. A small CSS block near the top of `app.py` handles what the theme can't,
 such as section headings, focus outlines, and the reading width for generated text. It uses the same
-colors, defined once in `DESIGN_TOKENS`.
+colors, defined once in `COLORS`.
 
 ## Limitations
 

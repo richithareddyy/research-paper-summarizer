@@ -25,32 +25,30 @@ from google.genai import types
 from sklearn.feature_extraction.text import TfidfVectorizer
 from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 
-# Load environment variables
 load_dotenv()
 
 APP_TITLE = "Advanced Research Paper Summarizer"
-# Design tokens used by the custom CSS and charts; keep in sync with .streamlit/config.toml
-DESIGN_TOKENS = {
-    "ink": "#23272F",            # primary actions and selected states
+# Mirrors the palette in .streamlit/config.toml for the custom CSS and charts
+COLORS = {
+    "ink": "#23272F",
     "ink_hover": "#3A404B",
-    "accent": "#9A3F1C",         # sienna: section numbers, links, the one warm note
+    "accent": "#9A3F1C",
     "text": "#1D2127",
     "text_muted": "#646A73",
-    "rule": "#E4E0D8",           # hairlines between sections
-    "surface": "#F6F4EF",
+    "rule": "#E4E0D8",
     "tag": "#EEEBE4",
-    "highlight": "#FCE9A6",      # highlighter yellow for text selection
+    "highlight": "#FCE9A6",
     "grid": "#EFECE6",
-    "data": "#56606E",           # slate for chart marks, so the accent stays rare
+    "data": "#56606E",  # chart bars stay neutral so the accent color remains rare
 }
 
-# Configuration (override any of these in .env)
 DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
-# Quick background tasks such as reading a paper's title and authors
+# Used for quick background calls, e.g. reading a paper's title and authors
 FAST_MODEL = os.getenv("GEMINI_FAST_MODEL", "gemini-flash-lite-latest")
 # Tried in order when the selected model is out of quota or overloaded
 FALLBACK_MODELS = ["gemini-flash-latest", "gemini-flash-lite-latest"]
 # Hidden from the model picker: previews often have no free quota, the rest aren't text models
+SERVER_ERRORS = (500, 502, 503, 504)
 HIDDEN_MODEL_TAGS = ("preview", "exp", "tts", "image", "live", "audio", "embedding", "robotics", "computer-use")
 MAX_INPUT_CHARS = int(os.getenv("MAX_INPUT_CHARS", "400000"))
 MAX_DOWNLOAD_MB = int(os.getenv("MAX_DOWNLOAD_MB", "50"))
@@ -75,17 +73,6 @@ ANALYSIS_TYPES = {
     "practical_applications": "Practical Applications",
 }
 
-# Sidebar options; the ones mapped to an analysis type unlock it in the Analysis tab
-ANALYSIS_OPTIONS = {
-    "Extract Keywords": None,
-    "Analyze Methodology": "methodology",
-    "Analyze Literature Context": "literature",
-    "Identify Future Research": "future_research",
-    "Find Practical Applications": "practical_applications",
-    "Extract Figures & Tables": None,
-    "Generate Citation Graph": None,
-}
-
 CITATION_STYLES = ["APA", "MLA", "BibTeX"]
 NAME_PARTICLES = {"van", "von", "de", "der", "den", "da", "di", "del", "la", "le", "du", "dos", "das", "bin", "al"}
 
@@ -96,22 +83,17 @@ CHAT_STARTERS = [
     "What are the limitations?",
 ]
 
-INPUT_METHODS = ["Upload PDF", "Paste Text", "DOI / arXiv Lookup", "Upload Multiple PDFs"]
-INPUT_METHOD_LABELS = {
-    "Upload PDF": "PDF",
-    "Paste Text": "Text",
-    "DOI / arXiv Lookup": "DOI / arXiv",
-    "Upload Multiple PDFs": "Compare",
-}
-# Short names for the "Sections" checklist in the sidebar
-SECTION_LABELS = {
-    "Analyze Methodology": "Methodology",
-    "Analyze Literature Context": "Literature context",
-    "Identify Future Research": "Future research",
-    "Find Practical Applications": "Practical applications",
-    "Extract Keywords": "Key terms",
-    "Extract Figures & Tables": "Figures & tables",
-    "Generate Citation Graph": "Citations by year",
+INPUT_METHODS = {"pdf": "PDF", "text": "Text", "lookup": "DOI / arXiv", "compare": "Compare"}
+
+# Optional sections, toggled in the sidebar. The first four match ANALYSIS_TYPES.
+SECTIONS = {
+    "methodology": "Methodology",
+    "literature": "Literature context",
+    "future_research": "Future research",
+    "practical_applications": "Practical applications",
+    "keywords": "Key terms",
+    "figures": "Figures & tables",
+    "citations": "Citations by year",
 }
 
 SAMPLE_PAPER = {"arxiv_id": "1706.03762", "label": "Attention Is All You Need (2017)"}
@@ -123,7 +105,6 @@ COMPARISON_FOCUS = {
     "Results Comparison": "Concentrate on the findings: where results agree, where they conflict, and how strong the evidence is.",
 }
 
-# Set page configuration
 st.set_page_config(
     page_title=APP_TITLE,
     page_icon=":material/description:",
@@ -131,7 +112,6 @@ st.set_page_config(
     initial_sidebar_state="auto"  # open on desktop, collapsed on phones
 )
 
-# Initialize session state variables
 SESSION_DEFAULTS = {
     "history": [],
     "extracted_text": "",
@@ -152,25 +132,24 @@ SESSION_DEFAULTS = {
     "study_aids": None,
     "last_upload_id": None,
     "paper_cache": {},
+    "input_method": "pdf",
 }
-for _key, _value in SESSION_DEFAULTS.items():
-    if _key not in st.session_state:
-        st.session_state[_key] = _value.copy() if isinstance(_value, (list, dict)) else _value
+for key, default in SESSION_DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = default.copy() if isinstance(default, (list, dict)) else default
 
-# Custom CSS: only what the theme in .streamlit/config.toml cannot express.
-# Spacing scale: 4 / 8 / 12 / 16 / 24 / 32 px. Radius: 4px everywhere.
+# Styling the theme in .streamlit/config.toml can't express
 st.markdown(f"""
 <style>
     :root {{
-        --rp-ink: {DESIGN_TOKENS["ink"]};
-        --rp-ink-hover: {DESIGN_TOKENS["ink_hover"]};
-        --rp-accent: {DESIGN_TOKENS["accent"]};
-        --rp-text: {DESIGN_TOKENS["text"]};
-        --rp-muted: {DESIGN_TOKENS["text_muted"]};
-        --rp-rule: {DESIGN_TOKENS["rule"]};
-        --rp-surface: {DESIGN_TOKENS["surface"]};
-        --rp-tag: {DESIGN_TOKENS["tag"]};
-        --rp-highlight: {DESIGN_TOKENS["highlight"]};
+        --rp-ink: {COLORS["ink"]};
+        --rp-ink-hover: {COLORS["ink_hover"]};
+        --rp-accent: {COLORS["accent"]};
+        --rp-text: {COLORS["text"]};
+        --rp-muted: {COLORS["text_muted"]};
+        --rp-rule: {COLORS["rule"]};
+        --rp-tag: {COLORS["tag"]};
+        --rp-highlight: {COLORS["highlight"]};
         --rp-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
         --rp-ease: 120ms ease;
     }}
@@ -185,13 +164,13 @@ st.markdown(f"""
                        line-height: 1.2; color: var(--rp-text); margin: 0; padding: 0; }}
     .masthead-subtitle {{ color: var(--rp-muted); font-size: 0.92rem; }}
 
-    /* Numbered section headings, like the sections of a paper */
+    /* Numbered section headings */
     .section-heading {{ display: flex; align-items: baseline; gap: 0.6rem;
                         border-bottom: 1px solid var(--rp-rule); padding-bottom: 0.4rem; margin: 0 0 0.9rem; }}
     .section-number {{ font-family: var(--rp-serif); color: var(--rp-accent); font-size: 1rem; font-weight: 600; }}
     .section-title {{ font-family: var(--rp-serif); font-size: 1.3rem; font-weight: 600; color: var(--rp-text); }}
 
-    /* The loaded paper, set like the head of an article */
+    /* Loaded paper */
     .paper-head {{ margin: 0 0 0.75rem; }}
     .paper-title {{ font-family: var(--rp-serif); font-size: 1.2rem; font-weight: 600; line-height: 1.35;
                     color: var(--rp-text); margin-bottom: 0.2rem; }}
@@ -200,18 +179,17 @@ st.markdown(f"""
     .paper-meta a {{ color: var(--rp-accent); text-decoration: none; }}
     .paper-meta a:hover {{ text-decoration: underline; }}
 
-    /* Comfortable reading measure for generated text */
+    /* Reading width for generated text */
     [class*="st-key-reading"] {{ max-width: 46rem; }}
     [class*="st-key-reading"] p, [class*="st-key-reading"] li {{ line-height: 1.65; }}
 
-    /* Quiet guidance instead of boxed empty states */
     .margin-note {{ border-left: 2px solid var(--rp-accent); padding: 0.1rem 0 0.1rem 0.8rem;
                     color: var(--rp-muted); margin: 0.25rem 0 1rem; font-size: 0.95rem; }}
     .margin-note strong {{ color: var(--rp-text); font-weight: 600; display: block; margin-bottom: 0.1rem; }}
     .key-terms {{ color: var(--rp-muted); font-size: 0.92rem; margin: 0.25rem 0 1rem; }}
     .key-terms span {{ color: var(--rp-text); }}
 
-    /* Sidebar: labels and a plain list, not a stack of widgets */
+    /* Sidebar */
     .side-label {{ text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.7rem; font-weight: 600;
                    color: var(--rp-muted); margin: 0.75rem 0 0.35rem; }}
     [data-testid="stSidebar"] [class*="st-key-history-"] button {{ justify-content: flex-start; text-align: left;
@@ -220,7 +198,7 @@ st.markdown(f"""
     [data-testid="stSidebar"] [class*="st-key-history-"] button:disabled {{ color: var(--rp-accent); opacity: 1; font-weight: 500; }}
     [data-testid="stSidebar"] [class*="st-key-history-"] p {{ white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 
-    /* Controls: color changes only */
+    /* Buttons */
     [data-testid^="stBaseButton"] {{ font-weight: 500;
         transition: background-color var(--rp-ease), border-color var(--rp-ease), color var(--rp-ease); }}
     [data-testid="stBaseButton-primary"]:hover, [data-testid="stBaseButton-primaryFormSubmit"]:hover {{
@@ -235,24 +213,21 @@ st.markdown(f"""
     [class*="st-key-link-"] button p {{ white-space: normal; text-align: left; }}
     [class*="st-key-link-"] button:hover {{ text-decoration: underline; }}
 
-    /* The upload area is the first thing to act on, so give it room */
     [data-testid="stFileUploaderDropzone"] {{ padding-top: 1.5rem; padding-bottom: 1.5rem; }}
 
-    /* Selected options read as quiet tags */
     [data-baseweb="tag"], [data-testid="stMultiSelectTagsContainer"] [data-tag] {{
         background-color: var(--rp-tag) !important; color: var(--rp-text) !important;
         border-radius: 3px !important; font-weight: 500; }}
     [data-baseweb="tag"] svg, [data-testid="stMultiSelectTagsContainer"] [data-tag] svg {{
         fill: var(--rp-muted) !important; color: var(--rp-muted) !important; }}
 
-    /* Segmented switchers wrap in narrow columns instead of clipping */
+    /* Let segmented controls wrap in narrow columns instead of clipping */
     [data-testid="stButtonGroup"] > div {{ flex-wrap: wrap; }}
 
     [data-baseweb="tab"] {{ font-weight: 500; transition: color var(--rp-ease); }}
     [data-baseweb="tab"]:hover {{ color: var(--rp-ink); }}
     [data-baseweb="tab-list"] {{ overflow-x: auto; scrollbar-width: thin; }}
 
-    /* Visible keyboard focus on every control */
     button:focus-visible, a:focus-visible, summary:focus-visible, [role="tab"]:focus-visible,
     input:focus-visible, textarea:focus-visible, [data-tag]:focus-visible {{
         outline: 2px solid var(--rp-accent) !important; outline-offset: 2px; box-shadow: none !important;
@@ -271,28 +246,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 
-class notify:
-    """Status messages with consistent icons."""
-
-    @staticmethod
-    def success(body):
-        st.success(body, icon=":material/check_circle:")
-
-    @staticmethod
-    def info(body):
-        st.info(body, icon=":material/info:")
-
-    @staticmethod
-    def warning(body):
-        st.warning(body, icon=":material/warning:")
-
-    @staticmethod
-    def error(body):
-        st.error(body, icon=":material/error:")
-
-
 def section_heading(number, title):
-    """A numbered section heading with a hairline rule."""
     st.markdown(
         f'<div class="section-heading" role="heading" aria-level="2">'
         f'<span class="section-number">{number}</span><span class="section-title">{html.escape(title)}</span></div>',
@@ -301,7 +255,6 @@ def section_heading(number, title):
 
 
 def margin_note(title, body):
-    """Quiet guidance shown where content will appear."""
     st.markdown(
         f'<div class="margin-note"><strong>{html.escape(title)}</strong>{html.escape(body)}</div>',
         unsafe_allow_html=True
@@ -309,7 +262,6 @@ def margin_note(title, body):
 
 
 def render_paper_head():
-    """Title, authors, and counts for the loaded paper, set like the head of an article."""
     metadata = st.session_state.paper_metadata
     title = metadata.get("title") or st.session_state.paper_source or "Untitled paper"
     authors = metadata.get("authors") or []
@@ -338,21 +290,20 @@ def side_label(text):
 
 
 def style_chart(fig):
-    """Apply the app's typography and colors to a Plotly figure."""
     fig.update_layout(
         template="plotly_white",
-        font={"family": "Inter, sans-serif", "color": DESIGN_TOKENS["text"]},
+        font={"family": "Inter, sans-serif", "color": COLORS["text"]},
         margin={"l": 10, "r": 10, "t": 20, "b": 10},
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
-    fig.update_xaxes(gridcolor=DESIGN_TOKENS["grid"], zeroline=False)
-    fig.update_yaxes(gridcolor=DESIGN_TOKENS["grid"], zeroline=False)
+    fig.update_xaxes(gridcolor=COLORS["grid"], zeroline=False)
+    fig.update_yaxes(gridcolor=COLORS["grid"], zeroline=False)
     return fig
 
 
-EMPTY_RESPONSE_MESSAGE = ("The model returned an empty response. It may have been blocked by safety filters; "
-                          "try another summary type or model.")
+EMPTY_RESPONSE = ("The model returned an empty response. It may have been blocked by safety filters; "
+                  "try another summary type or model.")
 
 
 class GeminiError(Exception):
@@ -363,12 +314,10 @@ class PaperLookupError(Exception):
     """Raised when a DOI / arXiv lookup fails."""
 
 
-# Define enhanced functions for text extraction
 def extract_text_from_pdf(pdf_bytes):
-    """Extract text, figures, tables and metadata from PDF bytes."""
     try:
         doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-    except Exception as e:
+    except pymupdf.FileDataError as e:
         raise ValueError(f"The file could not be read as a PDF ({e}).") from e
 
     with doc:
@@ -384,12 +333,11 @@ def extract_text_from_pdf(pdf_bytes):
 
         text = "\n".join(page.get_text() for page in doc)
 
-        # Extract images
         figures = []
         seen_xrefs = set()
         for page_num, page in enumerate(doc):
-            for img_info in page.get_images(full=True):
-                xref = img_info[0]
+            for image in page.get_images(full=True):
+                xref = image[0]
                 if xref in seen_xrefs or len(figures) >= MAX_FIGURES:
                     continue
                 seen_xrefs.add(xref)
@@ -406,14 +354,13 @@ def extract_text_from_pdf(pdf_bytes):
                         "height": pix.height
                     })
                 except Exception:
-                    continue  # skip images in unsupported formats
+                    continue  # skip images in formats PyMuPDF can't convert
 
-        # Detect tables
         tables = []
         for page_num, page in enumerate(doc):
             try:
                 found = page.find_tables()
-            except Exception:
+            except Exception:  # table detection is best-effort
                 continue
             for table in found.tables:
                 rows = [["" if cell is None else str(cell) for cell in row] for row in table.extract()]
@@ -424,7 +371,6 @@ def extract_text_from_pdf(pdf_bytes):
 
 
 def extract_references(text):
-    """Extract individual entries from the references section of the paper"""
     heading = re.compile(
         r'^\s*(?:\d+\.?\s*)?(references|bibliography|works cited|literature cited)\s*:?\s*$',
         re.IGNORECASE | re.MULTILINE
@@ -446,18 +392,12 @@ def extract_references(text):
         # Author-year style: a new entry starts with "Surname, X"
         entries = re.split(r"\n(?=[A-Z][A-Za-z'\-]+,\s+[A-Z])", ref_text)
 
-    references = []
-    for entry in entries:
-        clean_entry = re.sub(r'\s+', ' ', entry).strip()
-        if len(clean_entry) > 20:  # Minimum length to be a valid reference
-            references.append(clean_entry)
-    return references[:500]
+    references = [re.sub(r'\s+', ' ', entry).strip() for entry in entries]
+    return [ref for ref in references if len(ref) > 20][:500]
 
 
 def prepare_text_for_model(text):
-    """Normalise whitespace and trim the text to the configured input limit.
-
-    Returns the prepared text and whether it was truncated."""
+    """Normalize whitespace and cap the length. Returns (text, truncated)."""
     text = re.sub(r'(\w)-\n(\w)', r'\1\2', text)  # re-join words hyphenated across lines
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n\s*\n+', '\n\n', text).strip()
@@ -467,7 +407,6 @@ def prepare_text_for_model(text):
 
 
 def paper_id_for(content):
-    """Stable identifier for a paper's content."""
     if isinstance(content, str):
         content = content.encode("utf-8")
     return hashlib.sha256(content).hexdigest()[:16]
@@ -486,20 +425,15 @@ def format_authors(metadata):
     return ", ".join(authors) if authors else "Unknown"
 
 
-# Advanced analysis functions
 @st.cache_data(show_spinner=False)
 def extract_keywords(text, top_n=10):
-    """Extract important keywords from the paper using TF-IDF.
-
-    The paper is split into passages so that terms concentrated in a few
-    passages score higher than terms that appear everywhere."""
+    # TF-IDF over ~80-word passages, so terms concentrated in a few passages
+    # outrank words that appear everywhere in the paper
     if not text or len(text) < 100:
         return []
 
     words = re.sub(r'[^A-Za-z\s-]', ' ', text).split()
     passages = [" ".join(words[i:i + 80]) for i in range(0, len(words), 80)]
-    if not passages:
-        return []
 
     vectorizer = TfidfVectorizer(
         stop_words='english',
@@ -511,30 +445,18 @@ def extract_keywords(text, top_n=10):
     )
 
     try:
-        tfidf_matrix = vectorizer.fit_transform(passages)
-    except ValueError:
+        matrix = vectorizer.fit_transform(passages)
+    except ValueError:  # no usable terms (e.g. no passages, or everything was a stop word)
         return []
 
-    feature_names = vectorizer.get_feature_names_out()
-    scores = tfidf_matrix.sum(axis=0).A1
-    keyword_scores = sorted(zip(feature_names, scores), key=lambda x: x[1], reverse=True)
-    return [(word, float(score)) for word, score in keyword_scores[:top_n]]
+    scores = zip(vectorizer.get_feature_names_out(), matrix.sum(axis=0).A1)
+    ranked = sorted(scores, key=lambda pair: pair[1], reverse=True)
+    return [(word, float(score)) for word, score in ranked[:top_n]]
 
 
-def create_word_cloud_data(text):
-    """Prepare data for word cloud visualization"""
-    keywords = extract_keywords(text, top_n=50)
-    if not keywords:
-        return []
-
-    # Normalize scores for visualization
-    max_score = max(score for _, score in keywords)
-    return [(word, int((score / max_score) * 100)) for word, score in keywords]
-
-
-def generate_citation_graph(references):
-    """Count cited works by publication year"""
-    if not references or len(references) < 3:
+def citation_years(references):
+    """Counts of cited works per publication year, or None if there's too little to plot."""
+    if len(references) < 3:
         return None
 
     current_year = datetime.now().year
@@ -551,30 +473,26 @@ def generate_citation_graph(references):
     return sorted(year_counts.items())
 
 
-# Gemini API helpers
 def get_api_key():
-    """API key from the environment (.env), then Streamlit secrets."""
     key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
     if key:
         return key.strip()
     try:
         return st.secrets.get("GOOGLE_API_KEY")
-    except Exception:
+    except Exception:  # no secrets.toml; the exception type differs across Streamlit versions
         return None
 
 
 @st.cache_resource(show_spinner=False)
 def get_client(api_key):
-    # Retry temporary server failures with exponential backoff; quota errors (429)
-    # are not retried here because call_gemini switches to a fallback model instead
-    retry = types.HttpRetryOptions(attempts=2, initial_delay=2, max_delay=5,
-                                   http_status_codes=[500, 502, 503, 504])
+    # Retry brief server hiccups once. Quota errors (429) aren't retried here because
+    # _with_fallback moves on to a backup model instead.
+    retry = types.HttpRetryOptions(attempts=2, initial_delay=2, max_delay=5, http_status_codes=list(SERVER_ERRORS))
     return genai.Client(api_key=api_key, http_options=types.HttpOptions(retry_options=retry))
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def list_available_models(api_key):
-    """Gemini text models available to this API key."""
     names = set()
     for model in get_client(api_key).models.list():
         name = (model.name or "").removeprefix("models/")
@@ -582,8 +500,8 @@ def list_available_models(api_key):
         if (name.startswith("gemini") and "generateContent" in actions
                 and not any(tag in name for tag in HIDDEN_MODEL_TAGS)):
             names.add(name)
-    # "-latest" aliases always point at a current model, so list them first
-    return sorted(names, key=lambda n: (not n.endswith("-latest"), [-ord(c) for c in n]))
+    # Newest names first, with the "-latest" aliases (which always point at a current model) on top
+    return sorted(sorted(names, reverse=True), key=lambda n: not n.endswith("-latest"))
 
 
 def _describe_api_error(error, model_name):
@@ -604,14 +522,14 @@ def _describe_api_error(error, model_name):
         wait_text = f"about {round(float(wait.group(1)))} seconds" if wait else "a minute"
         return (f"Too many requests to {model_name} in a short time (free-tier rate limit). "
                 f"Wait {wait_text} and try again.")
-    if code in (500, 502, 503, 504):
+    if code in SERVER_ERRORS:
         return ("The selected Gemini model is busy right now (a temporary problem on Google's side). "
                 "Try again in a minute, or pick a different model in the sidebar.")
     return f"Gemini API error ({code}): {message}"
 
 
 def _with_fallback(model_name, send):
-    """Run send(client, model), switching to a fallback model on quota or availability errors."""
+    """Call send(client, model), moving on to FALLBACK_MODELS on quota or availability errors."""
     api_key = get_api_key()
     if not api_key:
         raise GeminiError("No Google API key configured. Add GOOGLE_API_KEY to your .env file (or the app's Secrets when deployed).")
@@ -624,12 +542,12 @@ def _with_fallback(model_name, send):
             result = send(get_client(api_key), candidate)
         except genai_errors.APIError as e:
             # Out of quota, overloaded, or unavailable: try the next model
-            if getattr(e, "code", None) in (404, 429, 500, 502, 503, 504):
+            if getattr(e, "code", None) in (404, 429, *SERVER_ERRORS):
                 first_error = first_error or e
                 continue
             raise GeminiError(_describe_api_error(e, candidate)) from e
-        except Exception as e:
-            raise GeminiError(f"Could not reach the Gemini API: {e}") from e
+        except Exception as e:  # network failures surface as httpx errors from inside the SDK
+            raise GeminiError(f"The Gemini request failed: {e}") from e
         if candidate != model_name:
             st.toast(f"{model_name} was unavailable, so {candidate} was used instead.")
         return result
@@ -642,19 +560,17 @@ def _with_fallback(model_name, send):
 
 
 def call_gemini(prompt, model_name, json_output=False):
-    """Send a prompt to Gemini and return the whole response text."""
     config = types.GenerateContentConfig(response_mime_type="application/json") if json_output else None
     response = _with_fallback(
         model_name, lambda client, model: client.models.generate_content(model=model, contents=prompt, config=config)
     )
     text = response.text
     if not text or not text.strip():
-        raise GeminiError(EMPTY_RESPONSE_MESSAGE)
+        raise GeminiError(EMPTY_RESPONSE)
     return text.strip()
 
 
 def stream_gemini(prompt, model_name):
-    """Send a prompt to Gemini and return a generator of text chunks as they arrive."""
     def start(client, model):
         chunks = iter(client.models.generate_content_stream(model=model, contents=prompt))
         return chunks, next(chunks, None)  # the request is sent here, so errors can trigger a fallback
@@ -674,9 +590,11 @@ def stream_gemini(prompt, model_name):
     return text_chunks()
 
 
-# Define functions for generating summaries using Gemini API
+def _ask(prompt, model_name, stream):
+    return stream_gemini(prompt, model_name) if stream else call_gemini(prompt, model_name)
+
+
 def generate_summary(text, model_name=DEFAULT_MODEL, summary_type="comprehensive", stream=False):
-    """Generate paper summary using Gemini API"""
     text, _ = prepare_text_for_model(text)
 
     prompts = {
@@ -764,11 +682,10 @@ def generate_summary(text, model_name=DEFAULT_MODEL, summary_type="comprehensive
         """
     }
 
-    return (stream_gemini if stream else call_gemini)(prompts[summary_type], model_name)
+    return _ask(prompts[summary_type], model_name, stream)
 
 
 def generate_detailed_analysis(text, model_name=DEFAULT_MODEL, analysis_type="methodology", stream=False):
-    """Generate detailed analysis of specific aspects of the paper"""
     text, _ = prepare_text_for_model(text)
 
     prompts = {
@@ -842,11 +759,10 @@ def generate_detailed_analysis(text, model_name=DEFAULT_MODEL, analysis_type="me
         """
     }
 
-    return (stream_gemini if stream else call_gemini)(prompts[analysis_type], model_name)
+    return _ask(prompts[analysis_type], model_name, stream)
 
 
 def generate_follow_up_questions(text, model_name=DEFAULT_MODEL, stream=False):
-    """Generate insightful follow-up questions about the paper"""
     text, _ = prepare_text_for_model(text)
 
     prompt = f"""
@@ -861,12 +777,11 @@ def generate_follow_up_questions(text, model_name=DEFAULT_MODEL, stream=False):
     Format your response as a numbered list in Markdown.
     """
 
-    return (stream_gemini if stream else call_gemini)(prompt, model_name)
+    return _ask(prompt, model_name, stream)
 
 
 def _parse_json_object(raw, what):
-    """Parse a JSON object from a model response, tolerating code fences."""
-    raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())
+    raw = re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip())  # models sometimes wrap JSON in a code fence
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as e:
@@ -879,7 +794,6 @@ def _parse_json_object(raw, what):
 
 
 def extract_paper_details(text, model_name=DEFAULT_MODEL):
-    """Extract structured metadata from the beginning of the paper using Gemini"""
     prompt = f"""
     Extract the following metadata from the beginning of this research paper:
 
@@ -922,7 +836,6 @@ def extract_paper_details(text, model_name=DEFAULT_MODEL):
 
 
 def compare_papers(papers_text, model_name=DEFAULT_MODEL, comparison_type="Full Comparison"):
-    """Compare multiple research papers"""
     if len(papers_text) < 2:
         raise ValueError("Need at least two papers to compare")
 
@@ -930,14 +843,12 @@ def compare_papers(papers_text, model_name=DEFAULT_MODEL, comparison_type="Full 
     ctx = get_script_run_ctx()
 
     def summarize(text):
-        add_script_run_ctx(threading.current_thread(), ctx)  # lets worker threads show notices
+        add_script_run_ctx(threading.current_thread(), ctx)  # so st.toast works from worker threads
         return generate_summary(text, model_name, "executive")
 
     with ThreadPoolExecutor(max_workers=min(4, len(papers_text))) as pool:
         briefs = list(pool.map(summarize, papers_text))
-    summaries = [f"Paper {i + 1}:\n{brief}" for i, brief in enumerate(briefs)]
-
-    combined_summaries = "\n\n".join(summaries)
+    combined_summaries = "\n\n".join(f"Paper {i}:\n{brief}" for i, brief in enumerate(briefs, 1))
     focus = COMPARISON_FOCUS.get(comparison_type, "")
 
     prompt = f"""
@@ -964,7 +875,6 @@ def compare_papers(papers_text, model_name=DEFAULT_MODEL, comparison_type="Full 
 
 
 def answer_question(text, question, chat_history, model_name=DEFAULT_MODEL, stream=False):
-    """Answer a question about the paper, using recent chat turns as context"""
     text, _ = prepare_text_for_model(text)
     recent = chat_history[-CHAT_HISTORY_TURNS * 2:]
     transcript = "\n\n".join(
@@ -988,11 +898,10 @@ def answer_question(text, question, chat_history, model_name=DEFAULT_MODEL, stre
     Question: {question}
     """
 
-    return (stream_gemini if stream else call_gemini)(prompt, model_name)
+    return _ask(prompt, model_name, stream)
 
 
 def generate_study_aids(text, model_name=DEFAULT_MODEL):
-    """Create a glossary of key terms and flashcards from the paper"""
     text, _ = prepare_text_for_model(text)
 
     prompt = f"""
@@ -1011,18 +920,18 @@ def generate_study_aids(text, model_name=DEFAULT_MODEL):
 
     data = _parse_json_object(call_gemini(prompt, model_name, json_output=True), "study aids")
 
-    def clean(items, first, second):
-        pairs = []
+    def clean_pairs(items, first, second):
+        cleaned = []
         for item in items if isinstance(items, list) else []:
             if isinstance(item, dict):
                 a, b = str(item.get(first) or "").strip(), str(item.get(second) or "").strip()
                 if a and b:
-                    pairs.append({first: a, second: b})
-        return pairs
+                    cleaned.append({first: a, second: b})
+        return cleaned
 
     aids = {
-        "glossary": clean(data.get("glossary"), "term", "definition"),
-        "flashcards": clean(data.get("flashcards"), "question", "answer"),
+        "glossary": clean_pairs(data.get("glossary"), "term", "definition"),
+        "flashcards": clean_pairs(data.get("flashcards"), "question", "answer"),
     }
     if not aids["glossary"] and not aids["flashcards"]:
         raise GeminiError("The model did not return usable study aids. Please try again.")
@@ -1030,17 +939,14 @@ def generate_study_aids(text, model_name=DEFAULT_MODEL):
 
 
 def flashcards_to_csv(flashcards):
-    """Question,answer rows (no header) that flashcard apps such as Anki can import."""
+    # No header row: Anki and Quizlet import plain question,answer pairs
     buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    for card in flashcards:
-        writer.writerow([card["question"], card["answer"]])
+    csv.writer(buffer).writerows([card["question"], card["answer"]] for card in flashcards)
     return buffer.getvalue()
 
 
-# Citations
 def _split_name(name):
-    """Return (last, first) for 'First Last' or 'Last, First'."""
+    """(last, first) from "First Last" or "Last, First"."""
     name = re.sub(r'\s+', ' ', name).strip()
     if "," in name:
         last, first = (part.strip() for part in name.split(",", 1))
@@ -1064,7 +970,6 @@ def _initials(first):
 
 
 def format_citation(metadata, style):
-    """Format the paper's metadata as an APA, MLA, or BibTeX citation."""
     authors = metadata.get("authors") or []
     if isinstance(authors, str):
         authors = [authors]
@@ -1122,7 +1027,6 @@ def format_citation(metadata, style):
     return f"@{entry_type}{{{key},\n{body}\n}}"
 
 
-# Paper loading
 def build_paper(text, metadata, figures=None, tables=None, source=""):
     return {
         "id": paper_id_for(text),
@@ -1136,7 +1040,7 @@ def build_paper(text, metadata, figures=None, tables=None, source=""):
 
 
 def enrich_metadata(paper):
-    """Fill in title/authors/etc. with Gemini's fast model. Failures are non-fatal."""
+    # Best effort: the paper still loads if this fails
     if not get_api_key():
         return
     try:
@@ -1150,7 +1054,6 @@ def enrich_metadata(paper):
 
 
 def process_pdf(pdf_bytes, filename):
-    """Extract a PDF once per session; later calls reuse the cached result."""
     pid = paper_id_for(pdf_bytes)
     cache = st.session_state.paper_cache
     if pid in cache:
@@ -1167,7 +1070,6 @@ def process_pdf(pdf_bytes, filename):
 
 
 def load_paper(paper):
-    """Make a paper the active one and clear results from the previous paper."""
     st.session_state.paper_id = paper["id"]
     st.session_state.paper_source = paper.get("filename", "")
     st.session_state.extracted_text = paper["text"]
@@ -1184,7 +1086,7 @@ def load_paper(paper):
 
 
 def _http_headers(include_contact=True):
-    """Request headers; the optional contact email is only sent to Crossref and arXiv."""
+    # The optional contact email is only sent to Crossref and arXiv, not to publisher sites
     headers = {"User-Agent": "ResearchPaperSummarizer/1.0"}
     mailto = os.getenv("CROSSREF_MAILTO")
     if mailto and include_contact:
@@ -1193,7 +1095,6 @@ def _http_headers(include_contact=True):
 
 
 def _download(url, accept_pdf_only=False, include_contact=False):
-    """Download a URL with a timeout and size limit."""
     limit = MAX_DOWNLOAD_MB * 1024 * 1024
     with requests.get(url, headers=_http_headers(include_contact), timeout=REQUEST_TIMEOUT, stream=True) as response:
         response.raise_for_status()
@@ -1210,7 +1111,6 @@ def _download(url, accept_pdf_only=False, include_contact=False):
 
 
 def fetch_crossref_record(doi):
-    """Return (metadata, raw record) for a DOI from Crossref."""
     try:
         response = requests.get(f"https://api.crossref.org/works/{quote(doi)}",
                                 headers=_http_headers(), timeout=REQUEST_TIMEOUT)
@@ -1238,7 +1138,6 @@ def fetch_crossref_record(doi):
 
 
 def fetch_semantic_scholar_record(doi):
-    """Title, authors, abstract, and any open PDF from Semantic Scholar, or None if unavailable."""
     headers = _http_headers()
     if os.getenv("SEMANTIC_SCHOLAR_API_KEY"):
         headers["x-api-key"] = os.getenv("SEMANTIC_SCHOLAR_API_KEY")
@@ -1264,7 +1163,6 @@ def fetch_semantic_scholar_record(doi):
 
 
 def fetch_arxiv_metadata(arxiv_id):
-    """Title, authors and year from the arXiv API."""
     response = requests.get("https://export.arxiv.org/api/query", params={"id_list": arxiv_id},
                             headers=_http_headers(), timeout=REQUEST_TIMEOUT)
     response.raise_for_status()
@@ -1296,7 +1194,6 @@ DOI_PATTERN = re.compile(r'(10\.\d{4,9}/\S+)')
 
 
 def lookup_paper(identifier):
-    """Fetch a paper by arXiv ID/URL or DOI."""
     identifier = identifier.strip()
     if not identifier:
         raise PaperLookupError("Enter a DOI or arXiv ID.")
@@ -1313,7 +1210,7 @@ def lookup_paper(identifier):
             metadata = fetch_arxiv_metadata(arxiv_id)
             paper["metadata"].update({k: v for k, v in metadata.items() if v})
         except (requests.exceptions.RequestException, ET.ParseError):
-            pass  # metadata is optional; the full text is already loaded
+            pass  # the full text is already loaded; metadata is a bonus
         return paper
 
     doi_match = DOI_PATTERN.search(identifier)
@@ -1335,7 +1232,6 @@ def lookup_paper(identifier):
         paper["metadata"].update({k: v for k, v in extra_metadata.items() if v})
         return paper
 
-    # Prefer an openly available full-text PDF
     for link in record.get("link", []):
         if link.get("content-type") == "application/pdf" and link.get("URL"):
             paper = open_pdf(link["URL"], metadata)
@@ -1370,13 +1266,11 @@ def lookup_paper(identifier):
     return paper
 
 
-# Report building and export
 def _demote_headings(text):
     return re.sub(r'^(#{1,5})(\s)', r'#\1\2', text, flags=re.MULTILINE)
 
 
 def build_report_markdown():
-    """Assemble all results for the current paper into one Markdown document."""
     metadata = st.session_state.paper_metadata
     sections = [
         f"# {metadata.get('title') or 'Research Paper Summary'}",
@@ -1418,15 +1312,14 @@ def has_results():
 
 
 def markdown_to_pdf(markdown_text, title):
-    """Render Markdown to a PDF using PyMuPDF (no external tools needed)."""
-    html = markdown.markdown(markdown_text, extensions=["tables", "fenced_code", "sane_lists"])
+    body = markdown.markdown(markdown_text, extensions=["tables", "fenced_code", "sane_lists"])
     css = (
         "body {font-family: sans-serif; font-size: 10.5pt; line-height: 1.4;} "
         "h1 {font-size: 18pt;} h2 {font-size: 14pt; margin-top: 12pt;} h3 {font-size: 12pt;} "
         "table {border-collapse: collapse;} td, th {border: 1px solid #999; padding: 3pt;} "
         "code, pre {font-family: monospace; font-size: 9pt;}"
     )
-    story = pymupdf.Story(html=html, user_css=css)
+    story = pymupdf.Story(html=body, user_css=css)
     buffer = io.BytesIO()
     writer = pymupdf.DocumentWriter(buffer)
     page_rect = pymupdf.paper_rect("letter")
@@ -1465,13 +1358,35 @@ def build_export_json():
     return json.dumps(export_data, indent=2, ensure_ascii=False, default=str)
 
 
-# App UI Components
+def paper_label(paper):
+    return paper["metadata"].get("title") or paper["filename"]
+
+
+def save_to_history():
+    entry = {
+        "id": st.session_state.paper_id,
+        "text": st.session_state.extracted_text,
+        "metadata": dict(st.session_state.paper_metadata),
+        "figures": st.session_state.figures,
+        "tables": st.session_state.tables,
+        "references": st.session_state.references,
+        "filename": st.session_state.paper_source,
+        "summary": st.session_state.current_summary,
+        "summary_info": st.session_state.summary_info,
+        "analyses": dict(st.session_state.analyses),
+        "follow_up_questions": st.session_state.follow_up_questions,
+        "chat_messages": list(st.session_state.chat_messages),
+        "study_aids": st.session_state.study_aids,
+    }
+    history = [h for h in st.session_state.history if h["id"] != entry["id"]]
+    st.session_state.history = (history + [entry])[-HISTORY_LIMIT:]
+
+
 def _clear_history():
     st.session_state.history = []
 
 
 def render_sidebar():
-    """Model choice, which sections to show, and recent papers"""
     api_key = get_api_key()
     with st.sidebar:
         side_label("Model")
@@ -1479,27 +1394,27 @@ def render_sidebar():
         if api_key:
             try:
                 models = list_available_models(api_key)
-            except Exception:
-                models = []
-        model_options = [DEFAULT_MODEL] + [m for m in models if m != DEFAULT_MODEL]
-        model_option = st.selectbox("Gemini model", model_options, index=0, label_visibility="collapsed")
+            except Exception:  # listing models is optional; the default model still works
+                pass
+        options = [DEFAULT_MODEL] + [m for m in models if m != DEFAULT_MODEL]
+        model = st.selectbox("Gemini model", options, label_visibility="collapsed")
         if not api_key:
-            notify.warning("No Gemini API key found. Add `GOOGLE_API_KEY` to `.env` "
-                           "(or the app's Secrets when deployed) and restart.")
+            st.warning("No Gemini API key found. Add `GOOGLE_API_KEY` to `.env` "
+                       "(or the app's Secrets when deployed) and restart.")
         elif not models:
             st.caption("Model list unavailable; using the default.")
         else:
             st.caption("Busy or over-quota models fall back automatically.")
 
         with st.expander("Sections"):
-            analysis_options = [name for name in SECTION_LABELS
-                                if st.checkbox(SECTION_LABELS[name], value=True, key=f"section_{name}")]
+            sections = {key for key, label in SECTIONS.items()
+                        if st.checkbox(label, value=True, key=f"section_{key}")}
 
-    return model_option, analysis_options
+    return model, sections
 
 
 def render_recent_papers():
-    """Drawn after the main content so the list reflects a paper loaded during this run."""
+    # Drawn after the main content so the list reflects a paper loaded during this run
     with st.sidebar:
         side_label("Recent papers")
         history = st.session_state.history
@@ -1517,79 +1432,77 @@ def render_recent_papers():
                    "references, and key terms are extracted from the paper itself.")
 
 
-def load_sample_comparison():
-    samples = []
-    for i, arxiv_id in enumerate(SAMPLE_COMPARISON["arxiv_ids"]):
-        with st.spinner(f"Downloading sample paper {i + 1} of {len(SAMPLE_COMPARISON['arxiv_ids'])} from arXiv..."):
-            try:
-                samples.append(lookup_paper(arxiv_id))
-            except (PaperLookupError, ValueError) as e:
-                notify.error(f"Could not load the sample papers: {e}")
-                return
-    st.session_state.sample_comparison = samples
-    st.rerun()
-
-
-def _clear_sample_comparison():
-    st.session_state.sample_comparison = []
-    st.session_state.comparison = ""
-
-
-def _keep_input_method():
-    """The input switcher can be deselected; keep the previous choice instead."""
-    if st.session_state.input_method is None:
-        st.session_state.input_method = st.session_state.get("last_input_method", INPUT_METHODS[0])
-    st.session_state.last_input_method = st.session_state.input_method
-
-
-def _load_sample_paper():
+def load_sample_paper():
     with st.spinner("Downloading the sample paper from arXiv..."):
         try:
             paper = lookup_paper(SAMPLE_PAPER["arxiv_id"])
         except (PaperLookupError, ValueError) as e:
-            notify.error(f"Could not load the sample paper: {e}")
+            st.error(f"Could not load the sample paper: {e}")
             return
     load_paper(paper)
     st.rerun()  # redraw the panel without the sample link
 
 
-def render_input_panel(model_option):
-    """Render the input section and return the selected input method"""
-    section_heading(1, "Paper")
-    if "input_method" not in st.session_state:
-        st.session_state.input_method = INPUT_METHODS[0]
-    upload_option = st.segmented_control(
-        "Add a paper", INPUT_METHODS, format_func=INPUT_METHOD_LABELS.get,
-        key="input_method", on_change=_keep_input_method, label_visibility="collapsed"
-    ) or INPUT_METHODS[0]
+def load_sample_papers():
+    ids = SAMPLE_COMPARISON["arxiv_ids"]
+    samples = []
+    for i, arxiv_id in enumerate(ids, 1):
+        with st.spinner(f"Downloading sample paper {i} of {len(ids)} from arXiv..."):
+            try:
+                samples.append(lookup_paper(arxiv_id))
+            except (PaperLookupError, ValueError) as e:
+                st.error(f"Could not load the sample papers: {e}")
+                return
+    st.session_state.sample_comparison = samples
+    st.rerun()
 
-    if upload_option == "Upload PDF":
-        uploaded_file = st.file_uploader("PDF file", type=["pdf"], label_visibility="collapsed")
-        if uploaded_file is None:
+
+def _clear_sample_papers():
+    st.session_state.sample_comparison = []
+    st.session_state.comparison = ""
+
+
+def _keep_input_method():
+    # A segmented control can be deselected; keep the previous choice instead
+    if st.session_state.input_method is None:
+        st.session_state.input_method = st.session_state.get("last_input_method", "pdf")
+    st.session_state.last_input_method = st.session_state.input_method
+
+
+def render_input_panel():
+    section_heading(1, "Paper")
+    method = st.segmented_control(
+        "Add a paper", list(INPUT_METHODS), format_func=INPUT_METHODS.get,
+        key="input_method", on_change=_keep_input_method, label_visibility="collapsed"
+    ) or "pdf"
+
+    if method == "pdf":
+        upload = st.file_uploader("PDF file", type=["pdf"], label_visibility="collapsed")
+        if upload is None:
             st.session_state.last_upload_id = None  # so re-uploading the same file loads it again
         else:
-            pdf_bytes = uploaded_file.getvalue()
+            pdf_bytes = upload.getvalue()
             upload_id = paper_id_for(pdf_bytes)
             # Streamlit reruns the script on every interaction; only load a new upload once
             if upload_id != st.session_state.last_upload_id:
                 with st.spinner("Reading the PDF..."):
                     try:
-                        paper = process_pdf(pdf_bytes, uploaded_file.name)
+                        paper = process_pdf(pdf_bytes, upload.name)
                     except ValueError as e:
-                        notify.error(f"Could not read this PDF. {e}")
-                        return upload_option
+                        st.error(f"Could not read this PDF. {e}")
+                        return method
                 st.session_state.last_upload_id = upload_id
                 load_paper(paper)
-                st.toast(f"Loaded {uploaded_file.name}")
+                st.toast(f"Loaded {upload.name}")
 
-    elif upload_option == "Paste Text":
+    elif method == "text":
         with st.form("paste_form", border=False):
             pasted = st.text_area("Paper text", height=260, label_visibility="collapsed",
                                   placeholder="Paste the full text of a paper")
             submitted = st.form_submit_button("Analyze Text", type="primary")
         if submitted:
             if len(pasted.strip()) < MIN_TEXT_CHARS:
-                notify.warning(f"Paste at least {MIN_TEXT_CHARS} characters.")
+                st.warning(f"Paste at least {MIN_TEXT_CHARS} characters.")
             else:
                 paper = build_paper(pasted.strip(), {}, source="Pasted text")
                 with st.spinner("Reading paper details..."):
@@ -1597,40 +1510,37 @@ def render_input_panel(model_option):
                 load_paper(paper)
                 st.toast("Text loaded")
 
-    elif upload_option == "Upload Multiple PDFs":
-        uploaded_files = st.file_uploader("PDF files", type=["pdf"], accept_multiple_files=True,
-                                          label_visibility="collapsed")
+    elif method == "compare":
+        uploads = st.file_uploader("PDF files", type=["pdf"], accept_multiple_files=True,
+                                   label_visibility="collapsed")
         papers = []
-        for i, file in enumerate(uploaded_files or []):
-            with st.spinner(f"Reading file {i + 1} of {len(uploaded_files)}..."):
+        for i, upload in enumerate(uploads or [], 1):
+            with st.spinner(f"Reading file {i} of {len(uploads)}..."):
                 try:
-                    papers.append(process_pdf(file.getvalue(), file.name))
+                    papers.append(process_pdf(upload.getvalue(), upload.name))
                 except ValueError as e:
-                    notify.error(f"Could not read {file.name}. {e}")
+                    st.error(f"Could not read {upload.name}. {e}")
 
-        if st.session_state.sample_comparison:
-            st.caption("Sample papers: " + ", ".join(p["metadata"].get("title") or p["filename"]
-                                                     for p in st.session_state.sample_comparison))
-            st.button("Remove Sample Papers", type="tertiary", on_click=_clear_sample_comparison)
-        elif not uploaded_files:
+        samples = st.session_state.sample_comparison
+        if samples:
+            st.caption("Sample papers: " + ", ".join(paper_label(p) for p in samples))
+            st.button("Remove Sample Papers", type="tertiary", on_click=_clear_sample_papers)
+        elif not uploads:
             if st.button(f"Try sample papers: {SAMPLE_COMPARISON['label']}", type="tertiary", key="link-samples",
                          help="Downloads two related papers from arXiv."):
-                load_sample_comparison()
-        papers += st.session_state.sample_comparison
+                load_sample_papers()
+        papers += samples
         st.session_state.processed_papers = papers
 
         if papers:
             col1, col2 = st.columns([3, 1], vertical_alignment="bottom")
-            chosen = col1.selectbox(
-                f"{len(papers)} papers ready. Analyze one on its own:",
-                range(len(papers)),
-                format_func=lambda i: f"{i + 1}. {papers[i]['metadata'].get('title') or papers[i]['filename']}"
-            )
+            chosen = col1.selectbox(f"{len(papers)} papers ready. Analyze one on its own:", range(len(papers)),
+                                    format_func=lambda i: f"{i + 1}. {paper_label(papers[i])}")
             if col2.button("Open Paper", width="stretch"):
                 load_paper(papers[chosen])
                 st.rerun()
 
-    elif upload_option == "DOI / arXiv Lookup":
+    elif method == "lookup":
         with st.form("lookup_form", border=False):
             identifier = st.text_input("DOI or arXiv ID/URL", placeholder="1706.03762 or 10.7717/peerj.4375")
             submitted = st.form_submit_button("Look up", type="primary")
@@ -1641,58 +1551,54 @@ def render_input_panel(model_option):
                 try:
                     paper = lookup_paper(identifier)
                 except (PaperLookupError, ValueError) as e:
-                    notify.error(str(e))
-                    return upload_option
+                    st.error(str(e))
+                    return method
             load_paper(paper)
             if paper.get("abstract_only"):
-                notify.warning("Only the abstract was available, so results are limited to it.")
+                st.warning("Only the abstract was available, so results are limited to it.")
             else:
                 st.toast("Paper loaded")
 
-    if upload_option != "Upload Multiple PDFs" and not st.session_state.extracted_text:
-        if st.button(f"Try a sample paper: {SAMPLE_PAPER['label']}", type="tertiary", key="link-sample",
-                     help="Downloads the paper from arXiv so you can try the app without your own PDF."):
-            _load_sample_paper()
-
-    if st.session_state.extracted_text:
-        text = st.session_state.extracted_text
+    text = st.session_state.extracted_text
+    if not text:
+        if method != "compare" and st.button(
+                f"Try a sample paper: {SAMPLE_PAPER['label']}", type="tertiary", key="link-sample",
+                help="Downloads the paper from arXiv so you can try the app without your own PDF."):
+            load_sample_paper()
+    else:
         with st.expander("Extracted text"):
             st.text(text[:1500] + ("..." if len(text) > 1500 else ""))
         if prepare_text_for_model(text)[1]:
             st.caption(f"Long paper: only the first {MAX_INPUT_CHARS:,} characters are sent to the model.")
 
-    return upload_option
+    return method
 
 
 def run_ai_stream(label, func, *args):
-    """Show a Gemini response as it is written; return the full text, or None on failure."""
     try:
         with st.spinner(label):
             chunks = func(*args, stream=True)
         text = st.write_stream(chunks)
     except GeminiError as e:
-        notify.error(str(e))
+        st.error(str(e))
         return None
-    if not isinstance(text, str):
-        text = "".join(str(part) for part in text or [])
-    if not text.strip():
-        notify.error(EMPTY_RESPONSE_MESSAGE)
+    # write_stream returns a list rather than a string when nothing was streamed
+    if not isinstance(text, str) or not text.strip():
+        st.error(EMPTY_RESPONSE)
         return None
     return text.strip()
 
 
 def run_ai_task(label, func, *args):
-    """Run a Gemini-backed task with a spinner; show an error and return None on failure."""
     with st.spinner(label):
         try:
             return func(*args)
         except GeminiError as e:
-            notify.error(str(e))
+            st.error(str(e))
             return None
 
 
-def render_output_panel(model_option, analysis_options):
-    """Render the results for the loaded paper"""
+def render_output_panel(model, sections):
     section_heading(2, "Analysis")
 
     if not st.session_state.extracted_text:
@@ -1704,183 +1610,181 @@ def render_output_panel(model_option, analysis_options):
         return
 
     render_paper_head()
-    tabs = st.tabs(["Summary", "Chat", "Analysis", "Study", "Figures & Data", "Export"])
+    summary_tab, chat_tab, analysis_tab, study_tab, figures_tab, export_tab = st.tabs(
+        ["Summary", "Chat", "Analysis", "Study", "Figures & Data", "Export"])
+    with summary_tab:
+        render_summary(model)
+    with chat_tab:
+        render_chat(model)
+    with analysis_tab:
+        render_analysis(model, sections)
+    with study_tab:
+        render_study_aids(model)
+    with figures_tab:
+        render_figures(sections)
+    with export_tab:
+        render_export()
 
-    # Summary Tab
-    with tabs[0]:
+
+def render_summary(model):
+    col1, col2 = st.columns([3, 2], vertical_alignment="bottom")
+    summary_type = col1.selectbox("Summary type", list(SUMMARY_TYPES), format_func=SUMMARY_TYPES.get)
+    label = "Generate New Summary" if st.session_state.current_summary else "Generate Summary"
+    if col2.button(label, type="primary", width="stretch"):
+        summary = run_ai_stream("Writing the summary...", generate_summary,
+                                st.session_state.extracted_text, model, summary_type)
+        if summary:
+            st.session_state.current_summary = summary
+            st.session_state.summary_info = f"{SUMMARY_TYPES[summary_type]} summary · {model}"
+            save_to_history()
+            st.rerun()  # refresh the button label and the export tab
+
+    if st.session_state.current_summary:
+        with st.container(key="reading-summary"):
+            st.caption(st.session_state.summary_info)
+            st.markdown(st.session_state.current_summary)
+
+
+def render_analysis(model, sections):
+    st.subheader("Detailed Analysis")
+    available = [key for key in ANALYSIS_TYPES if key in sections]
+    if available:
         col1, col2 = st.columns([3, 2], vertical_alignment="bottom")
-        summary_type = col1.selectbox("Summary type", list(SUMMARY_TYPES), format_func=SUMMARY_TYPES.get)
-        label = "Generate New Summary" if st.session_state.current_summary else "Generate Summary"
-        if col2.button(label, type="primary", width="stretch"):
-            summary = run_ai_stream("Writing the summary...", generate_summary,
-                                    st.session_state.extracted_text, model_option, summary_type)
-            if summary:
-                st.session_state.current_summary = summary
-                st.session_state.summary_info = f"{SUMMARY_TYPES[summary_type]} summary · {model_option}"
-                _update_history()
-                st.rerun()  # refresh the button label and export tab
-
-        if st.session_state.current_summary:
-            with st.container(key="reading-summary"):
-                st.caption(st.session_state.summary_info)
-                st.markdown(st.session_state.current_summary)
-
-    # Chat Tab
-    with tabs[1]:
-        render_chat(model_option)
-
-    # Analysis Tab
-    with tabs[2]:
-        available = [ANALYSIS_OPTIONS[o] for o in analysis_options if ANALYSIS_OPTIONS[o]]
-        st.subheader("Detailed Analysis")
-        if available:
-            col1, col2 = st.columns([3, 2], vertical_alignment="bottom")
-            analysis_type = col1.selectbox("Analysis type", available, format_func=ANALYSIS_TYPES.get)
-            if col2.button("Generate Analysis", type="primary", width="stretch"):
-                result = run_ai_stream("Analyzing the paper...", generate_detailed_analysis,
-                                       st.session_state.extracted_text, model_option, analysis_type)
-                if result:
-                    st.session_state.analyses[analysis_type] = result
-                    _update_history()
-                    st.rerun()
-            for key, result in st.session_state.analyses.items():
-                with st.expander(f"{ANALYSIS_TYPES[key]} Analysis", expanded=(key == analysis_type)):
-                    with st.container(key=f"reading-analysis-{key}"):
-                        st.markdown(result)
-        else:
-            st.caption("Turn on an analysis under Sections in the sidebar.")
-
-        st.subheader("Research Questions")
-        if st.button("Generate Follow-up Questions"):
-            questions = run_ai_stream("Thinking of questions...", generate_follow_up_questions,
-                                      st.session_state.extracted_text, model_option)
-            if questions:
-                st.session_state.follow_up_questions = questions
-                _update_history()
+        analysis_type = col1.selectbox("Analysis type", available, format_func=ANALYSIS_TYPES.get)
+        if col2.button("Generate Analysis", type="primary", width="stretch"):
+            result = run_ai_stream("Analyzing the paper...", generate_detailed_analysis,
+                                   st.session_state.extracted_text, model, analysis_type)
+            if result:
+                st.session_state.analyses[analysis_type] = result
+                save_to_history()
                 st.rerun()
-        if st.session_state.follow_up_questions:
-            with st.container(key="reading-questions"):
-                st.markdown(st.session_state.follow_up_questions)
+        for key, result in st.session_state.analyses.items():
+            with st.expander(f"{ANALYSIS_TYPES[key]} Analysis", expanded=(key == analysis_type)):
+                with st.container(key=f"reading-analysis-{key}"):
+                    st.markdown(result)
+    else:
+        st.caption("Turn on an analysis under Sections in the sidebar.")
 
-        if "Extract Keywords" in analysis_options:
-            keywords = extract_keywords(st.session_state.extracted_text)
-            if keywords:
-                st.subheader("Key Terms")
-                st.markdown('<div class="key-terms"><span>'
-                            + "</span> · <span>".join(html.escape(word) for word, _ in keywords)
-                            + "</span></div>", unsafe_allow_html=True)
+    st.subheader("Research Questions")
+    if st.button("Generate Follow-up Questions"):
+        questions = run_ai_stream("Thinking of questions...", generate_follow_up_questions,
+                                  st.session_state.extracted_text, model)
+        if questions:
+            st.session_state.follow_up_questions = questions
+            save_to_history()
+            st.rerun()
+    if st.session_state.follow_up_questions:
+        with st.container(key="reading-questions"):
+            st.markdown(st.session_state.follow_up_questions)
 
-        st.subheader("Cite This Paper")
-        style = st.radio("Citation style", CITATION_STYLES, horizontal=True, label_visibility="collapsed")
-        st.code(format_citation(st.session_state.paper_metadata, style), language=None, wrap_lines=True)
-        st.caption("Built from the extracted details. Double-check before submitting.")
+    if "keywords" in sections:
+        keywords = extract_keywords(st.session_state.extracted_text)
+        if keywords:
+            st.subheader("Key Terms")
+            st.markdown('<div class="key-terms"><span>'
+                        + "</span> · <span>".join(html.escape(word) for word, _ in keywords)
+                        + "</span></div>", unsafe_allow_html=True)
 
-        if st.session_state.references:
-            with st.expander(f"References ({len(st.session_state.references)})"):
-                for i, ref in enumerate(st.session_state.references):
-                    st.markdown(f"{i + 1}. {ref}")
+    st.subheader("Cite This Paper")
+    style = st.radio("Citation style", CITATION_STYLES, horizontal=True, label_visibility="collapsed")
+    st.code(format_citation(st.session_state.paper_metadata, style), language=None, wrap_lines=True)
+    st.caption("Built from the extracted details. Double-check before submitting.")
 
-    # Study Tab
-    with tabs[3]:
-        render_study_aids(model_option)
+    if st.session_state.references:
+        with st.expander(f"References ({len(st.session_state.references)})"):
+            for i, ref in enumerate(st.session_state.references, 1):
+                st.markdown(f"{i}. {ref}")
 
-    # Visualization Tab
-    with tabs[4]:
-        viz_options = [name for name, option in (("Top Keywords", "Extract Keywords"),
-                                                 ("Citations by Year", "Generate Citation Graph"),
-                                                 ("Figures & Tables", "Extract Figures & Tables"))
-                       if option in analysis_options]
-        if not viz_options:
-            st.caption("Turn on key terms, citations by year, or figures & tables under Sections in the sidebar.")
-            viz_type = None
+
+def render_figures(sections):
+    views = [label for label, key in (("Top Keywords", "keywords"), ("Citations by Year", "citations"),
+                                      ("Figures & Tables", "figures")) if key in sections]
+    if not views:
+        st.caption("Turn on key terms, citations by year, or figures & tables under Sections in the sidebar.")
+        return
+    view = st.segmented_control("Show", views, default=views[0], label_visibility="collapsed") or views[0]
+
+    if view == "Top Keywords":
+        st.caption("Terms that stand out in this paper, scored with TF-IDF.")
+        keywords = extract_keywords(st.session_state.extracted_text, top_n=15)
+        if keywords:
+            top_score = keywords[0][1]
+            fig = px.bar(
+                x=[int(score / top_score * 100) for _, score in keywords],
+                y=[word for word, _ in keywords],
+                orientation='h',
+                labels={"x": "Relative Importance", "y": ""},
+                color_discrete_sequence=[COLORS["data"]]
+            )
+            fig.update_layout(height=480, yaxis={"autorange": "reversed"})
+            st.plotly_chart(style_chart(fig), width="stretch")
         else:
-            viz_type = st.segmented_control("Show", viz_options, default=viz_options[0],
-                                            label_visibility="collapsed") or viz_options[0]
+            st.info("Not enough text to generate keyword visualization")
 
-        if viz_type == "Top Keywords":
-            st.caption("Terms that stand out in this paper, scored with TF-IDF.")
-            word_cloud_data = create_word_cloud_data(st.session_state.extracted_text)
-
-            if word_cloud_data:
-                top = word_cloud_data[:15]
-                fig = px.bar(
-                    x=[value for _, value in top],
-                    y=[word for word, _ in top],
-                    orientation='h',
-                    labels={"x": "Relative Importance", "y": ""},
-                    color_discrete_sequence=[DESIGN_TOKENS["data"]]
-                )
-                fig.update_layout(height=480, yaxis={"autorange": "reversed"})
-                st.plotly_chart(style_chart(fig), width="stretch")
-            else:
-                notify.info("Not enough text to generate keyword visualization")
-
-        elif viz_type == "Citations by Year":
-            st.caption("Publication years of the works this paper cites.")
-            citation_data = generate_citation_graph(st.session_state.references)
-
-            if citation_data:
-                fig = px.bar(
-                    x=[year for year, _ in citation_data],
-                    y=[count for _, count in citation_data],
-                    labels={"x": "Year", "y": "Number of Citations"},
-                    color_discrete_sequence=[DESIGN_TOKENS["data"]]
-                )
-                st.plotly_chart(style_chart(fig), width="stretch")
-            else:
-                notify.info("Not enough references to generate citation graph")
-
-        elif viz_type == "Figures & Tables":
-            st.subheader("Extracted Figures & Tables")
-
-            if st.session_state.figures:
-                st.write(f"Displaying {len(st.session_state.figures)} extracted figures")
-                cols = st.columns(2)
-                for i, figure in enumerate(st.session_state.figures):
-                    with cols[i % 2]:
-                        st.image(figure["data"], caption=f"Figure from page {figure['page']}", width="stretch")
-            else:
-                notify.info("No figures extracted from this document")
-
-            if st.session_state.tables:
-                st.write(f"Displaying {len(st.session_state.tables)} detected tables")
-                for table in st.session_state.tables:
-                    with st.expander(f"Table from page {table['page']}"):
-                        st.dataframe(pd.DataFrame(table["rows"]), hide_index=True)
-            else:
-                notify.info("No tables detected in this document")
-
-    # Export Tab
-    with tabs[5]:
-        st.subheader("Export Options")
-
-        if not has_results():
-            margin_note("Nothing to export yet",
-                        "Generate a summary, analysis, chat answer, or study aids first. Everything you create is included.")
-            return
-
-        title = st.session_state.paper_metadata.get("title") or "Research Paper Summary"
-        base_name = f"{safe_filename(title)}_summary"
-        report = build_report_markdown()
-
-        export_format = st.radio("Format", ["Markdown", "PDF", "JSON"], horizontal=True)
-        if export_format == "Markdown":
-            st.download_button("Download Markdown", report, file_name=f"{base_name}.md",
-                               mime="text/markdown", type="primary", icon=":material/download:", on_click="ignore")
-        elif export_format == "PDF":
-            try:
-                pdf_bytes = markdown_to_pdf(report, title)
-            except Exception as e:
-                notify.error(f"Could not create the PDF: {e}")
-            else:
-                st.download_button("Download PDF", pdf_bytes, file_name=f"{base_name}.pdf",
-                                   mime="application/pdf", type="primary", icon=":material/download:", on_click="ignore")
+    elif view == "Citations by Year":
+        st.caption("Publication years of the works this paper cites.")
+        years = citation_years(st.session_state.references)
+        if years:
+            fig = px.bar(
+                x=[year for year, _ in years],
+                y=[count for _, count in years],
+                labels={"x": "Year", "y": "Number of Citations"},
+                color_discrete_sequence=[COLORS["data"]]
+            )
+            st.plotly_chart(style_chart(fig), width="stretch")
         else:
-            st.download_button("Download JSON", build_export_json(), file_name=f"{base_name}.json",
-                               mime="application/json", type="primary", icon=":material/download:", on_click="ignore")
+            st.info("Not enough references to generate citation graph")
 
-        with st.expander("Preview"):
-            st.markdown(report)
+    else:
+        st.subheader("Extracted Figures & Tables")
+        figures = st.session_state.figures
+        if figures:
+            st.write(f"Displaying {len(figures)} extracted figures")
+            cols = st.columns(2)
+            for i, figure in enumerate(figures):
+                with cols[i % 2]:
+                    st.image(figure["data"], caption=f"Figure from page {figure['page']}", width="stretch")
+        else:
+            st.info("No figures extracted from this document")
+
+        tables = st.session_state.tables
+        if tables:
+            st.write(f"Displaying {len(tables)} detected tables")
+            for table in tables:
+                with st.expander(f"Table from page {table['page']}"):
+                    st.dataframe(pd.DataFrame(table["rows"]), hide_index=True)
+        else:
+            st.info("No tables detected in this document")
+
+
+def render_export():
+    st.subheader("Export Options")
+    if not has_results():
+        margin_note("Nothing to export yet",
+                    "Generate a summary, analysis, chat answer, or study aids first. Everything you create is included.")
+        return
+
+    title = st.session_state.paper_metadata.get("title") or "Research Paper Summary"
+    base_name = f"{safe_filename(title)}_summary"
+    report = build_report_markdown()
+
+    export_format = st.radio("Format", ["Markdown", "PDF", "JSON"], horizontal=True)
+    if export_format == "Markdown":
+        data, ext, mime = report, "md", "text/markdown"
+    elif export_format == "PDF":
+        try:
+            data, ext, mime = markdown_to_pdf(report, title), "pdf", "application/pdf"
+        except (RuntimeError, ValueError) as e:
+            st.error(f"Could not create the PDF: {e}")
+            data = None
+    else:
+        data, ext, mime = build_export_json(), "json", "application/json"
+    if data is not None:
+        st.download_button(f"Download {export_format}", data, file_name=f"{base_name}.{ext}", mime=mime,
+                           type="primary", icon=":material/download:", on_click="ignore")
+
+    with st.expander("Preview"):
+        st.markdown(report)
 
 
 def _queue_question(question):
@@ -1889,11 +1793,10 @@ def _queue_question(question):
 
 def _clear_chat():
     st.session_state.chat_messages = []
-    _update_history()
+    save_to_history()
 
 
-def render_chat(model_option):
-    """Ask questions about the paper in a chat"""
+def render_chat(model):
     messages = st.session_state.chat_messages
 
     if not messages:
@@ -1905,37 +1808,35 @@ def render_chat(model_option):
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    question = st.chat_input("Ask a question about this paper")
-    question = question or st.session_state.pop("pending_question", None)
+    question = st.chat_input("Ask a question about this paper") or st.session_state.pop("pending_question", None)
     if question and question.strip():
         question = question.strip()
         with st.chat_message("user"):
             st.markdown(question)
         with st.chat_message("assistant"):
             answer = run_ai_stream("Reading the paper...", answer_question,
-                                   st.session_state.extracted_text, question, messages, model_option)
+                                   st.session_state.extracted_text, question, messages, model)
         if answer:
             st.session_state.chat_messages = messages + [
                 {"role": "user", "content": question},
                 {"role": "assistant", "content": answer},
             ]
-            _update_history()
+            save_to_history()
             st.rerun()
 
     if messages:
         st.button("Clear Chat", icon=":material/delete:", type="tertiary", on_click=_clear_chat)
 
 
-def render_study_aids(model_option):
-    """Glossary and flashcards generated from the paper"""
+def render_study_aids(model):
     aids = st.session_state.study_aids
     label = "Regenerate Study Aids" if aids else "Generate Study Aids"
     if st.button(label, type="secondary" if aids else "primary"):
         result = run_ai_task("Creating a glossary and flashcards...", generate_study_aids,
-                             st.session_state.extracted_text, model_option)
+                             st.session_state.extracted_text, model)
         if result:
             st.session_state.study_aids = result
-            _update_history()
+            save_to_history()
             st.rerun()
 
     if not aids:
@@ -1956,61 +1857,30 @@ def render_study_aids(model_option):
         title = st.session_state.paper_metadata.get("title") or "paper"
         st.download_button("Download Flashcards (CSV)", flashcards_to_csv(aids["flashcards"]),
                            file_name=f"{safe_filename(title)}_flashcards.csv", mime="text/csv",
-                           icon=":material/download:", on_click="ignore", help="Question and answer columns; imports into Anki and Quizlet.")
+                           icon=":material/download:", on_click="ignore",
+                           help="Question and answer columns; imports into Anki and Quizlet.")
 
 
-def _update_history():
-    """Save the current paper and its results to the session history"""
-    entry = {
-        "id": st.session_state.paper_id,
-        "text": st.session_state.extracted_text,
-        "metadata": dict(st.session_state.paper_metadata),
-        "figures": st.session_state.figures,
-        "tables": st.session_state.tables,
-        "references": st.session_state.references,
-        "filename": st.session_state.paper_source,
-        "summary": st.session_state.current_summary,
-        "summary_info": st.session_state.summary_info,
-        "analyses": dict(st.session_state.analyses),
-        "follow_up_questions": st.session_state.follow_up_questions,
-        "chat_messages": list(st.session_state.chat_messages),
-        "study_aids": st.session_state.study_aids,
-        "timestamp": datetime.now().isoformat()
-    }
-
-    history = [h for h in st.session_state.history if h["id"] != entry["id"]]
-    history.append(entry)
-
-    # Keep only the most recent items
-    st.session_state.history = history[-HISTORY_LIMIT:]
-
-
-def handle_paper_comparison(model_option):
-    """Handle comparing multiple papers"""
+def render_comparison(model):
     papers = st.session_state.processed_papers
     if len(papers) < 2:
         return
 
-    _render_comparison(papers, model_option)
-
-
-def _render_comparison(papers, model_option):
     section_heading(3, "Comparison")
-
     selected = st.multiselect(
         "Papers to compare",
         range(len(papers)),
         default=list(range(len(papers))) if len(papers) <= 3 else None,
-        format_func=lambda i: f"{i + 1}. {papers[i]['metadata'].get('title') or papers[i]['filename']}"
+        format_func=lambda i: f"{i + 1}. {paper_label(papers[i])}"
     )
-    comparison_type = st.radio("Focus", list(COMPARISON_FOCUS), horizontal=True)
+    focus = st.radio("Focus", list(COMPARISON_FOCUS), horizontal=True)
 
     if len(selected) < 2:
         st.caption("Select at least two papers.")
     elif st.button("Compare Selected Papers", type="primary"):
         comparison = run_ai_task(
             f"Comparing {len(selected)} papers (each is summarized first, in parallel)...",
-            compare_papers, [papers[i]["text"] for i in selected], model_option, comparison_type
+            compare_papers, [papers[i]["text"] for i in selected], model, focus
         )
         if comparison:
             st.session_state.comparison = comparison
@@ -2018,16 +1888,10 @@ def _render_comparison(papers, model_option):
     if st.session_state.comparison:
         with st.container(key="reading-comparison"):
             st.markdown(st.session_state.comparison)
-        st.download_button(
-            "Download Comparison",
-            st.session_state.comparison,
-            file_name="paper_comparison.md",
-            mime="text/markdown",
-            icon=":material/download:", on_click="ignore"
-        )
+        st.download_button("Download Comparison", st.session_state.comparison, file_name="paper_comparison.md",
+                           mime="text/markdown", icon=":material/download:", on_click="ignore")
 
 
-# Main application function
 def main():
     st.markdown(
         f'<header class="masthead"><h1 class="masthead-title">{APP_TITLE}</h1>'
@@ -2035,17 +1899,17 @@ def main():
         unsafe_allow_html=True
     )
 
-    model_option, analysis_options = render_sidebar()
+    model, sections = render_sidebar()
 
-    # The results column is wider: once a paper is loaded, it is where the reading happens
-    col1, col2 = st.columns([5, 7], gap="large")
-    with col1:
-        input_method = render_input_panel(model_option)
-    with col2:
-        render_output_panel(model_option, analysis_options)
+    # Results get the wider column; that's where most of the reading happens
+    left, right = st.columns([5, 7], gap="large")
+    with left:
+        method = render_input_panel()
+    with right:
+        render_output_panel(model, sections)
 
-    if input_method == "Upload Multiple PDFs":
-        handle_paper_comparison(model_option)
+    if method == "compare":
+        render_comparison(model)
 
     render_recent_papers()
 

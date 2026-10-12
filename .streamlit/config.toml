@@ -1,5 +1,4 @@
-# Design tokens for the whole app: ink on paper, serif headings like a printed paper,
-# one warm accent. app.py (DESIGN_TOKENS) mirrors the colors used by its CSS layer and charts.
+# app.py's COLORS mirrors these values for its custom CSS and charts.
 [theme]
 base = "light"
 primaryColor = "#23272F"
