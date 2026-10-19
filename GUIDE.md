@@ -1,0 +1,121 @@
+# Research Paper Summarizer
+
+Turn a PDF, pasted text or DOI/arXiv link into structured summaries, methodology insights, a chat you can question, study aids and exportable research notes. Built with **Python · Streamlit · Gemini · PyMuPDF**.
+
+[Get started](#setup) · [Features](#features) · [Configuration](#configuration) · [Limitations](#limitations)
+
+## How the reading workflow is implemented
+
+The goal is to keep reading, asking questions, and taking notes in one place. [`app.py`](app.py) contains the Streamlit interface and processing functions:
+
+- PyMuPDF extracts selectable text, embedded images, and tables. DOI lookup tries Crossref and Semantic Scholar; arXiv lookup can fetch a PDF.
+- Summaries and chat send paper text directly to Gemini. Text is normalized and capped by `MAX_INPUT_CHARS`; there is no embedding index or retrieval layer, and text beyond that cap is omitted.
+- Comparisons first generate an executive summary for each paper, using up to four workers, then compare those summaries. That keeps the comparison prompt smaller but can lose details from the originals.
+- Extracted material and generated results stay in Streamlit session state. The export functions assemble those results into Markdown, PDF, or JSON.
+
+## At a glance
+
+| Bring a paper | Explore the research | Learn and take it with you |
+| --- | --- | --- |
+| PDF upload, pasted text, DOI or arXiv lookup, or built-in sample papers | Streaming summaries, chat with the paper, methodology, figures, tables and comparisons | Glossary and flashcards, APA/MLA/BibTeX citations, Markdown, PDF and JSON reports |
+
+## Workflow
+
+1. **Load** a paper, or select **Try a sample paper**.
+2. **Choose** a summary type next to **Generate Summary**, and optional sections in the sidebar.
+3. **Explore** the summary, chat with the paper, and browse its figures, tables and references.
+4. **Study** with the glossary and flashcards, and copy a citation.
+5. **Compare or export** findings for further reading. Try **Upload Multiple PDFs → Try sample papers**
+   to compare two papers without your own files.
+
+## Features
+
+- **Input methods**
+  - Upload a single PDF
+  - Paste text
+  - Upload several PDFs and compare them, or load two sample papers to compare
+  - Look up a paper by DOI or arXiv ID/URL. arXiv papers are downloaded in full. For other
+    DOIs the app uses an open-access PDF from Crossref or Semantic Scholar when one exists, and otherwise the abstract.
+- **Summaries**: comprehensive, executive, technical, critique, or "explain like I'm 5", shown as they are written
+- **Detailed analysis**: methodology, literature context, future research, and practical applications
+- **Follow-up questions**: research questions the paper raises
+- **Chat with the paper**: ask questions and get answers based on the paper's text, with starter questions to get going
+- **Study aids**: a glossary of key terms and flashcards, downloadable as CSV for Anki or Quizlet
+- **Citations**: copy-ready APA, MLA, and BibTeX citations built from the paper's details
+- **Metadata**: title, authors, year, venue, and DOI (from the PDF, Gemini, Crossref, or arXiv)
+- **Extraction**: references, embedded figures, and tables (via PyMuPDF table detection)
+- **Visualizations**: TF-IDF keywords, citations by year, and a figure/table gallery
+- **Paper comparison**: full, methodology-focused, or results-focused; papers are summarized in parallel
+- **Export**: a report with the summary, analyses, questions, chat, study aids, and citation, as Markdown, PDF, or JSON
+- **History**: reopen the last 10 papers from this session, including their results
+
+Use **Sections** in the sidebar to choose which analyses and visualizations appear.
+
+## Requirements
+
+- Python 3.10 or newer
+- A Google Gemini API key from https://aistudio.google.com/apikey
+
+## Setup
+
+```bash
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cp .env.example .env             # then put your key in .env
+```
+
+## Run
+
+```bash
+streamlit run app.py
+```
+
+The app opens at http://localhost:8501 and reads your key from `.env` automatically. If no key is
+found, the sidebar explains how to add one; you can still load papers and browse their figures,
+tables, and references.
+
+To try the app without your own PDF, click **Try a sample paper**. It downloads
+*Attention Is All You Need* (Vaswani et al., 2017) from arXiv. Then click **Generate Summary**.
+
+To try a comparison, choose **Upload Multiple PDFs** and click **Try sample papers**. It downloads
+*Attention Is All You Need* and *BERT* (Devlin et al., 2018) from arXiv, ready to compare.
+
+## Configuration
+
+Set these in `.env`. Only `GOOGLE_API_KEY` is required.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GOOGLE_API_KEY` | — | Gemini API key (`GEMINI_API_KEY` also works) |
+| `GEMINI_MODEL` | `gemini-flash-latest` | Default model. The sidebar also lists every Gemini text model your key can use. |
+| `GEMINI_FAST_MODEL` | `gemini-flash-lite-latest` | Faster model for quick background tasks, such as reading a paper's title and authors on upload |
+| `MAX_INPUT_CHARS` | `400000` | Maximum characters of paper text sent to the model |
+| `MAX_DOWNLOAD_MB` | `50` | Size limit for PDFs downloaded during DOI/arXiv lookup |
+| `CROSSREF_MAILTO` | — | Optional contact email sent to Crossref/arXiv, as their API etiquette asks |
+| `SEMANTIC_SCHOLAR_API_KEY` | — | Optional key for Semantic Scholar, used when Crossref has no abstract or open PDF for a DOI |
+
+For Streamlit Community Cloud, put `GOOGLE_API_KEY` in the app's secrets instead of `.env`.
+
+The app's look (colors, fonts, corner radius, status and chart colors) is set in
+`.streamlit/config.toml`. A small CSS block near the top of `app.py` handles what the theme can't,
+such as section headings, focus outlines, and the reading width for generated text. It uses the same
+colors, defined once in `COLORS`.
+
+## Limitations
+
+- Scanned PDFs without selectable text are not supported (no OCR).
+- Reference parsing, table detection, and citation years use heuristics. Results depend on
+  the paper's layout.
+- Many publisher DOIs have no open full text. For those, download the PDF and upload it.
+- Every AI feature needs a valid Gemini API key and uses your API quota.
+- Free-tier keys have daily and per-minute limits for each model. If the selected model is out of
+  quota or overloaded, the app automatically retries with `gemini-flash-latest` and then
+  `gemini-flash-lite-latest`. Preview and experimental models are hidden from the model list
+  because they often have no free quota.
+
+## Checking a change
+
+There is no committed automated test suite. A useful manual check is to load a selectable-text PDF, inspect the extracted text and metadata, generate a summary, ask a question whose answer is in the paper, compare the two built-in samples, and open each export format. Model calls require a key; there is no recorded accuracy evaluation.
+
+Generated summaries, citations, and study aids need checking against the paper. Model context is truncated by characters rather than selected for relevance, and multi-paper conclusions are based on intermediate summaries. Paper text is sent to the configured Gemini service when analysis is requested.
