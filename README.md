@@ -1,6 +1,6 @@
 # Research Paper Summarizer
 
-Read a paper, ask questions about it, and export your notes from one Streamlit app. Inputs include PDFs, pasted text, and DOI/arXiv links.
+You’re reading a paper and want a quick overview before working through the details, or you have a question about a section you just read. This Streamlit app takes a PDF, pasted text, or DOI/arXiv link and lets you generate summaries, ask follow-up questions, and export notes. The paper’s extracted text, figures, and tables stay available while you read the model’s answers.
 
 **Python · Streamlit · Gemini · PyMuPDF**
 
