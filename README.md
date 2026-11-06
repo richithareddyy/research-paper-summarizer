@@ -4,7 +4,7 @@ You’re reading a paper and want a quick overview before working through the de
 
 **Python · Streamlit · Gemini · PyMuPDF**
 
-PyMuPDF extracts the paper’s text, embedded figures, and tables. Gemini handles summaries, paper chat, and study aids. The interface keeps those results together so you can return to the source while reading an answer.
+PyMuPDF extracts the paper’s contents, and Gemini generates summaries, answers, and study aids. This is a reading aid: generated explanations still need checking against the paper.
 
 ## Run locally
 
@@ -27,11 +27,11 @@ Set `GOOGLE_API_KEY` in `.env`. On Windows, activate with `.venv\Scripts\activat
 - Glossaries, flashcards, citations, and multi-paper comparisons.
 - Markdown, PDF, and JSON exports.
 
-The implementation lives in [`app.py`](app.py). Paper text is sent directly to Gemini with a character cap; there is no retrieval index. Comparisons use intermediate summaries, and results stay in Streamlit session state unless exported.
+The implementation lives in [`app.py`](app.py). It sends extracted text directly to Gemini, up to a configured character limit; it does not search a separate document index. Multi-paper comparisons use summaries of each paper. Results stay in the current session unless you export them.
 
 ## Limitations and checks
 
-There is no OCR for scanned PDFs. DOI lookup may return only an abstract when open full text is unavailable. Extraction depends on layout, and generated answers and citations need checking against the paper. API quotas apply; paper text is shared with the configured model service.
+Scanned PDFs need text recognition, which this app does not include. DOI lookup may return only an abstract when full text is unavailable. Complex page layouts can confuse extraction. Paper text is sent to the configured model service, whose API quotas apply.
 
 No automated test suite or accuracy evaluation is committed. Check extraction, a question with a known answer, sample-paper comparison, and each export format when making changes.
 
