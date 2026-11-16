@@ -33,6 +33,6 @@ The implementation lives in [`app.py`](app.py). It sends extracted text directly
 
 Scanned PDFs need text recognition, which this app does not include. DOI lookup may return only an abstract when full text is unavailable. Complex page layouts can confuse extraction. Paper text is sent to the configured model service, whose API quotas apply.
 
-No automated test suite or accuracy evaluation is committed. Check extraction, a question with a known answer, sample-paper comparison, and each export format when making changes.
+Chat answers quote the passages they rely on, and each quote is checked against the extracted text. Pages the app couldn't read (for example scanned ones) are reported rather than silently skipped. `python -m pytest` runs the deterministic test suite; `eval/` contains a small labelled corpus and harness, but no model-quality evaluation has been run yet. See the guide for what was measured.
 
 [Configuration, workflow, and technical notes](GUIDE.md)

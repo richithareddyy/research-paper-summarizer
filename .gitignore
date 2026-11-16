@@ -13,3 +13,6 @@ downloads/
 
 # OS
 .DS_Store
+
+# Evaluation downloads (pinned by hash, not committed)
+.eval-cache/

@@ -32,3 +32,7 @@ toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false
+
+[server]
+# Matches MAX_DOWNLOAD_MB so uploads and downloads share one size limit
+maxUploadSize = 50
