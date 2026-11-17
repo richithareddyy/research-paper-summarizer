@@ -4,6 +4,8 @@ You’re reading a paper and want a quick overview before working through the de
 
 **Python · Streamlit · Gemini · PyMuPDF**
 
+**App:** https://researchpapersummerizer-3bmsmrmm7glsxfeavslfb6.streamlit.app/
+
 PyMuPDF extracts the paper’s contents, and Gemini generates summaries, answers, and study aids. This is a reading aid: generated explanations still need checking against the paper.
 
 ## Run locally
