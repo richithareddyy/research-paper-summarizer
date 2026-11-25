@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlsplit
 import requests
 
 MAX_REDIRECTS = 5
+CONTACT_HOSTS = {"api.crossref.org", "export.arxiv.org", "arxiv.org", "api.semanticscholar.org"}
 
 
 class FetchError(Exception):
@@ -66,8 +67,23 @@ def check_url(url):
 
 def fetch(url, *, max_bytes, timeout=30, headers=None, params=None, session=requests):
     deadline = time.monotonic() + timeout
+    original = urlsplit(url)
     for _ in range(MAX_REDIRECTS + 1):
         check_url(url)
+        destination = urlsplit(url)
+        same_origin = (destination.scheme, destination.hostname) == (original.scheme, original.hostname)
+        if headers is not None:
+            headers = dict(headers)
+            for name in list(headers):
+                if name.lower() == "x-api-key" and not (
+                    same_origin and destination.scheme == "https"
+                    and destination.hostname == "api.semanticscholar.org"
+                ):
+                    del headers[name]
+                elif name.lower() == "user-agent" and not (
+                    same_origin and destination.scheme == "https" and destination.hostname in CONTACT_HOSTS
+                ):
+                    headers[name] = "ResearchPaperSummarizer/1.0"
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             raise FetchError("The request took too long")

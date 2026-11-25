@@ -128,7 +128,7 @@ These rules apply to paper and metadata requests. Fetching papers means requesti
 - a byte limit (`MAX_DOWNLOAD_MB` for PDFs, 5 MB for API responses), checked against `Content-Length` and while streaming;
 - an overall time budget per request, checked between redirects and as data arrives; a read that stalls can still overrun it by up to its own timeout.
 
-This came out of an audit that found the earlier code followed redirects to any destination; it was a hardening gap, not a demonstrated exploit. One gap remains: the address is checked when the URL is resolved and requests resolves it again when connecting, so a DNS server that changes its answer in between (DNS rebinding) is not blocked. Request headers, including the optional Semantic Scholar key, are also resent on redirects. Uploads are limited to 50 MB in `.streamlit/config.toml`.
+This came out of an audit that found the earlier code followed redirects to any destination; it was a hardening gap, not a demonstrated exploit. One gap remains: the address is checked when the URL is resolved and requests resolves it again when connecting, so a DNS server that changes its answer in between (DNS rebinding) is not blocked. The optional Semantic Scholar key is sent only to api.semanticscholar.org over HTTPS; the contact email is limited to the intended Crossref, arXiv, and Semantic Scholar hosts over HTTPS, and both are stripped when a redirect changes the original host or scheme. Uploads are limited to 50 MB in `.streamlit/config.toml`.
 
 ## Evaluation
 

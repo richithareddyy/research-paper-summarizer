@@ -114,3 +114,47 @@ def test_connection_errors_become_fetch_errors():
     session = mock.Mock(get=mock.Mock(side_effect=requests.ConnectionError("offline")))
     with resolve_to(PUBLIC), pytest.raises(FetchError, match="offline"):
         fetch("https://papers.example.org/a.pdf", max_bytes=1000, session=session)
+
+
+@pytest.mark.parametrize('destination,keep', [
+    ('https://unrelated.example/paper', False),
+    ('https://api.semanticscholar.org/next', True),
+    ('http://api.semanticscholar.org/next', False),
+])
+def test_semantic_redirect_credentials(destination, keep):
+    session = FakeSession(FakeResponse(302, {'Location': destination}), FakeResponse())
+    headers = {'X-API-Key': 'placeholder-key',
+               'User-Agent': 'ResearchPaperSummarizer/1.0 (mailto:placeholder@example.invalid)'}
+    with resolve_to(PUBLIC):
+        fetch('https://api.semanticscholar.org/start', max_bytes=1000,
+              headers=headers, session=session)
+    first, second = [kwargs['headers'] for _, kwargs in session.calls]
+    assert first['X-API-Key'] == 'placeholder-key'
+    assert ('X-API-Key' in second) is keep
+    assert ('mailto:' in second['User-Agent']) is keep
+    assert headers['X-API-Key'] == 'placeholder-key'
+
+
+@pytest.mark.parametrize('host', ['api.crossref.org', 'export.arxiv.org', 'arxiv.org',
+                                  'api.semanticscholar.org'])
+def test_contact_redirect_to_unrelated_host(host):
+    session = FakeSession(FakeResponse(302, {'Location': 'https://unrelated.example/pdf'}), FakeResponse())
+    with resolve_to(PUBLIC):
+        fetch(f'https://{host}/start', max_bytes=1000, session=session,
+              headers={'User-Agent': 'ResearchPaperSummarizer/1.0 (mailto:placeholder@example.invalid)'})
+    assert 'mailto:' in session.calls[0][1]['headers']['User-Agent']
+    assert session.calls[1][1]['headers']['User-Agent'] == 'ResearchPaperSummarizer/1.0'
+
+
+@pytest.mark.parametrize('url', ['https://unrelated.example/paper',
+                                 'https://api.semanticscholar.org.evil.example/paper',
+                                 'http://api.semanticscholar.org/paper'])
+def test_unintended_initial_destination_has_no_credentials(url):
+    session = FakeSession(FakeResponse())
+    with resolve_to(PUBLIC):
+        fetch(url, max_bytes=1000, session=session,
+              headers={'x-api-key': 'placeholder-key',
+                       'user-agent': 'ResearchPaperSummarizer/1.0 (mailto:placeholder@example.invalid)'})
+    sent = session.calls[0][1]['headers']
+    assert 'x-api-key' not in sent
+    assert sent['user-agent'] == 'ResearchPaperSummarizer/1.0'
