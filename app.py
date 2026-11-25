@@ -1043,7 +1043,8 @@ def load_paper(paper):
 
 
 def _http_headers(include_contact=True):
-    # The optional contact email is only sent to Crossref and arXiv, not to publisher sites
+    # Contact email identifies requests to Crossref and Semantic Scholar metadata APIs,
+    # the arXiv metadata API and arxiv.org PDFs; fetch strips it on host/scheme changes.
     headers = {"User-Agent": "ResearchPaperSummarizer/1.0"}
     mailto = os.getenv("CROSSREF_MAILTO")
     if mailto and include_contact:
